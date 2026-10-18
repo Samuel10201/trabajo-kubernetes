@@ -56,38 +56,34 @@ def matriz(n):
             print(f"  fila {i}/{n}")
     return {"n": n, "traza": round(sum(c[i][i] for i in range(n)), 6)}
 
+
 def primos(n):
-    # Regla del PDF: Para n < 2, la cantidad es 0
+    # Para n < 2 no hay primos.
     if n < 2:
         return {"n": n, "cantidad": 0}
-    
-    # Creamos una lista para nuestra criba
+
+    # Criba de Eratostenes con bucles simples: cada multiplo de un primo se
+    # marca como compuesto.
     es_primo = [True] * (n + 1)
-    es_primo[0] = False
-    es_primo[1] = False
-    
-    # Calculamos algunos hitos para imprimir el progreso (25%, 50%, 75%, 100%)
-    hitos = {n // 4: "25%", n // 2: "50%", (3 * n) // 4: "75%", n: "100%"}
-    
-    # Criba con bucles simples para cargar la CPU como pide el enunciado
-    for p in range(2, int(n**0.5) + 1):
+    es_primo[0] = es_primo[1] = False
+    for p in range(2, int(n ** 0.5) + 1):
         if es_primo[p]:
             for i in range(p * p, n + 1, p):
                 es_primo[i] = False
-                
-    # Contamos la cantidad total y mostramos progreso por stdout (logs)
+
+    # Se cuenta recorriendo toda la lista y se avisa al llegar al 25%, 50%,
+    # 75% y 100%. flush=True hace que el log aparezca de inmediato en
+    # `kubectl logs` y no al terminar la tarea.
+    hitos = {n // 4: "25%", n // 2: "50%", (3 * n) // 4: "75%", n: "100%"}
     cantidad = 0
     for i in range(2, n + 1):
         if es_primo[i]:
             cantidad += 1
-            
-        # Imprimir progreso si llegamos a un hito
         if i in hitos:
-            # flush=True es importante para que el log salga en tiempo real en Kubernetes
             print(f"Progreso: calculados hasta {i} ({hitos[i]})", flush=True)
-            
-    # El main del archivo se encargará de convertir esto a JSON y agregar lo que falte
-    return {"n": n, "cantidad": cantidad}    
+
+    # main() completa la linea JSON con la tarea, el lenguaje y los ms.
+    return {"n": n, "cantidad": cantidad}
 
 
 TAREAS = {
@@ -95,7 +91,7 @@ TAREAS = {
     "ordenar": ordenar,
     "fib": fib,
     "matriz": matriz,
-    "primos" : primos
+    "primos": primos,
 }
 
 
