@@ -262,12 +262,50 @@ def describir_estado(status):
     correctos = status.succeeded or 0
     fallidos = status.failed or 0
 
-    # TODO: devolver un texto que distinga los cuatro casos:
-    #   - `activos` > 0    -> el Job sigue en ejecucion;
-    #   - `correctos` > 0  -> el Job termino correctamente;
-    #   - `fallidos` > 0   -> el Job fallo;
-    #   - los tres en cero -> el Pod todavia no ha arrancado.
-    raise NotImplementedError("describir_estado")
+    # El plazo se revisa primero: cuando se vence, el Job queda como fallido
+    # y la causa solo aparece en sus condiciones (tipo Failed, motivo
+    # DeadlineExceeded).
+    for condicion in status.conditions or []:
+        if (
+            condicion.type == "Failed"
+            and condicion.status == "True"
+            and condicion.reason == "DeadlineExceeded"
+        ):
+            return "fallo: tiempo agotado (DeadlineExceeded)"
+
+    if activos > 0:
+        return "en ejecucion"
+    if correctos > 0:
+        return "termino correctamente"
+    if fallidos > 0:
+        return "fallo"
+    return "pendiente (el Pod todavia no ha arrancado)"
+
+
+def causa_en_pod(nombre):
+    """Devuelve la causa del problema leida en el Pod del Job, o "".
+
+    El Job solo sabe que fallo o que sigue activo. Por que murio el contenedor
+    (sin memoria) o por que no arranca (no hay imagen) lo sabe el Pod.
+    """
+    config.load_kube_config()
+    core = client.CoreV1Api()
+
+    pods = core.list_namespaced_pod(
+        namespace=NAMESPACE,
+        label_selector=f"job-name={nombre}",
+    )
+    for pod in pods.items:
+        for contenedor in pod.status.container_statuses or []:
+            terminado = contenedor.state.terminated
+            if terminado and terminado.reason == "OOMKilled":
+                return "fallo: sin memoria (OOMKilled)"
+
+            esperando = contenedor.state.waiting
+            if esperando and esperando.reason == "ErrImageNeverPull":
+                return "atascado: imagen no encontrada"
+
+    return ""
 
 
 def listar_jobs():
@@ -275,13 +313,28 @@ def listar_jobs():
 
     Esta es la lista que muestra la opcion 2 del menu.
     """
-    # TODO: pedir todos los Jobs del namespace con
-    #   cliente_batch().list_namespaced_job(namespace=NAMESPACE)
-    # El resultado tiene un atributo `.items`; de cada elemento se usan
-    # `job.metadata.name` y `job.status`.
-    jobs = ...
+    jobs = cliente_batch().list_namespaced_job(namespace=NAMESPACE)
 
-    return [(job.metadata.name, describir_estado(job.status)) for job in jobs.items]
+    resultado = []
+    for job in jobs.items:
+        nombre = job.metadata.name
+        estado = describir_estado(job.status)
+
+        # El Job solo sabe que fallo o que sigue activo; la causa esta en el
+        # Pod. Un Pod sin imagen cuenta como activo, por eso se revisa tambien
+        # cuando el Job esta en ejecucion.
+        if estado == "fallo":
+            causa = causa_en_pod(nombre)
+            if causa == "fallo: sin memoria (OOMKilled)":
+                estado = causa
+        elif estado == "en ejecucion":
+            causa = causa_en_pod(nombre)
+            if causa == "atascado: imagen no encontrada":
+                estado = causa
+
+        resultado.append((nombre, estado))
+
+    return resultado
 
 
 def consultar_estado(nombre):
@@ -312,16 +365,12 @@ def consultar_logs(nombre):
 
     pod = pods.items[0].metadata.name
 
-    # TODO: devolver la salida del Pod. Pidan la respuesta sin procesar y
-    # decodifiquenla:
-    #
-    #   respuesta = core.read_namespaced_pod_log(
-    #       name=pod, namespace=NAMESPACE, _preload_content=False)
-    #   return respuesta.data.decode("utf-8", errors="replace")
-    #
-    # Sin `_preload_content=False`, el cliente 36.x devuelve el repr de los
-    # bytes y los logs se imprimen como b'...\n...' en una sola linea.
-    raise NotImplementedError("consultar_logs")
+    # Los logs se piden al Pod. Sin _preload_content=False el cliente devuelve
+    # el repr de los bytes y todo sale como b'...' en una sola linea.
+    respuesta = core.read_namespaced_pod_log(
+        name=pod, namespace=NAMESPACE, _preload_content=False
+    )
+    return respuesta.data.decode("utf-8", errors="replace")
 
 
 # ---------------------------------------------------------------------------
