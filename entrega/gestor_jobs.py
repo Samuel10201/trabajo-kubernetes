@@ -33,6 +33,11 @@ NAMESPACE = "estudiantes-202630"
 RAIZ = Path(__file__).resolve().parent.parent
 CATALOGO = RAIZ / "catalogo" / "tareas.json"
 
+# Segundos que puede vivir un Job antes de que Kubernetes lo corte por su cuenta
+# (queda como fallido con motivo DeadlineExceeded). Sin plazo, una tarea
+# colgada ocuparia el nodo indefinidamente.
+PLAZO_SEGUNDOS = 300
+
 # La complejidad elegida fija DOS cosas a la vez:
 #
 #   - los recursos que se le piden al contenedor (NIVELES), y
@@ -118,9 +123,7 @@ def seleccionar(catalogo):
 
     definicion = catalogo[lenguaje]
 
-    # TODO: mostrar las tareas de ese lenguaje con elegir_opcion(...).
-    # La lista de tareas esta en definicion["tasks"].
-    tarea = ...
+    tarea = elegir_opcion("Tarea:", definicion["tasks"])
 
     if tarea is None:
         return None
@@ -141,9 +144,11 @@ def seleccionar(catalogo):
         return None
     complejidad = etiqueta.split(" ")[0]
 
-    imagen = ...  # TODO: la imagen que declara `definicion` en el catalogo.
-    argumentos = ...  # TODO: [tarea, str(N del nivel elegido)].
-    recursos = ...  # TODO: la fila de NIVELES que corresponde a `complejidad`.
+    imagen = definicion["image"]
+    # Los argumentos de un contenedor son texto (como en una linea de comandos):
+    # N se convierte con str(), la imagen lo vuelve a leer como numero.
+    argumentos = [tarea, str(tamanos[complejidad])]
+    recursos = NIVELES[complejidad]
 
     return lenguaje, tarea, complejidad, imagen, argumentos, recursos
 
@@ -201,27 +206,34 @@ def crear_job(nombre, imagen, argumentos, recursos):
     # es el tope. Si el contenedor supera el limite de memoria, lo mata con
     # OOMKilled; si supera el de CPU, lo frena.
     limites = client.V1ResourceRequirements(
-        requests=...,  # TODO: {"cpu": ..., "memory": ...} desde `recursos`.
-        limits=...,    # TODO: idem con las claves de limite.
+        requests={"cpu": recursos["cpu_request"], "memory": recursos["mem_request"]},
+        limits={"cpu": recursos["cpu_limit"], "memory": recursos["mem_limit"]},
     )
 
+    # Never: las imagenes son locales (estan dentro de Minikube y no en un
+    # registro), asi que Kubernetes no debe intentar descargarlas.
     contenedor = client.V1Container(
         name="tarea",
         image=imagen,
-        image_pull_policy=...,  # TODO
-        args=...,               # TODO: los argumentos del contenedor.
+        image_pull_policy="Never",
+        args=argumentos,
         resources=limites,
     )
 
+    # Never: si el contenedor falla, el Pod no se reinicia; el fallo queda
+    # visible en vez de repetirse dentro del mismo Pod.
     plantilla = client.V1PodTemplateSpec(
         spec=client.V1PodSpec(
-            restart_policy=...,  # TODO
+            restart_policy="Never",
             containers=[contenedor],
         ),
     )
 
+    # backoff_limit=0: el Job no crea Pods de reemplazo. Con el valor por
+    # defecto (6) una tarea que falla por memoria se ejecutaria 7 veces.
     especificacion = client.V1JobSpec(
-        backoff_limit=...,  # TODO
+        backoff_limit=0,
+        active_deadline_seconds=PLAZO_SEGUNDOS,
         template=plantilla,
     )
 
@@ -232,10 +244,8 @@ def crear_job(nombre, imagen, argumentos, recursos):
         spec=especificacion,
     )
 
-    # TODO: enviar el objeto al cluster con
-    #   cliente_batch().create_namespaced_job(namespace=NAMESPACE, body=job)
-    # y devolver `nombre`.
-    raise NotImplementedError("crear_job")
+    cliente_batch().create_namespaced_job(namespace=NAMESPACE, body=job)
+    return nombre
 
 
 # ---------------------------------------------------------------------------
