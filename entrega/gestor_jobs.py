@@ -72,6 +72,7 @@ TAMANOS = {
     "ordenar": {"baja": 100000, "media": 1000000, "alta": 3000000},
     "fib": {"baja": 25, "media": 30, "alta": 35},
     "matriz": {"baja": 60, "media": 120, "alta": 250},
+    "primos": {"baja": 200000, "media": 2000000, "alta": 10000000},
 }
 
 
@@ -378,34 +379,50 @@ def consultar_logs(nombre):
 # ---------------------------------------------------------------------------
 
 def jobs_terminados():
-    """Devuelve los nombres de los Jobs que ya terminaron.
-
-    Terminado = sin Pods activos y con al menos un Pod correcto o fallido. Un
-    Job en ejecucion NO debe aparecer aqui: la limpieza no puede cancelar
-    trabajo que sigue corriendo.
-    """
-    jobs = cliente_batch().list_namespaced_job(namespace=NAMESPACE)
-
-    # TODO: devolver la lista de nombres de los Jobs terminados. De cada `job`
-    # se usan `job.metadata.name` y los mismos contadores de `job.status` que
-    # ya interpretaron en describir_estado: `active`, `succeeded` y `failed`.
-    raise NotImplementedError("jobs_terminados")
+    # 1. Creamos el cliente de la API de Kubernetes para acceder a los Jobs (BatchV1)
+    batch_v1 = client.BatchV1Api()
+    
+    # 2. Pedimos la lista completa de Jobs que existen en nuestro namespace
+    lista_jobs = batch_v1.list_namespaced_job(namespace="estudiantes-202630")
+    
+    # 3. Creamos una lista vacía donde guardaremos los nombres de los que ya acabaron
+    terminados = []
+    
+    # 4. Recorremos cada job que nos devolvió Kubernetes
+    for job in lista_jobs.items:
+        estado = job.status
+        
+        # Kubernetes a veces devuelve 'None' si el contador está vacío.
+        # Usamos "or 0" para convertir esos 'None' en un número 0 y evitar errores matemáticos.
+        activos = estado.active or 0
+        exitosos = estado.succeeded or 0
+        fallidos = estado.failed or 0
+        
+        # 5. Aplicamos la regla estricta del PDF: 
+        # Cero activos Y (al menos uno exitoso O al menos uno fallido)
+        if activos == 0 and (exitosos > 0 or fallidos > 0):
+            # Si cumple, sacamos el nombre del job y lo metemos a nuestra lista
+            terminados.append(job.metadata.name)
+            
+    # 6. Devolvemos la lista final con los nombres
+    return terminados
 
 
 def eliminar_job(nombre):
-    """Elimina un Job y, con el, el Pod que creo."""
-    # TODO: borrar el Job con
-    #   cliente_batch().delete_namespaced_job(
-    #       name=nombre,
-    #       namespace=NAMESPACE,
-    #       body=client.V1DeleteOptions(propagation_policy="Background"),
-    #   )
-    #
-    # `propagation_policy="Background"` es lo que hace que Kubernetes borre
-    # tambien los Pods del Job. Pruebenlo primero sin esa opcion y miren
-    # `kubectl get pods -n estudiantes-202630`: el Job desaparece y su Pod se
-    # queda huerfano en el namespace.
-    raise NotImplementedError("eliminar_job")
+    # 1. Volvemos a instanciar el cliente de la API
+    batch_v1 = client.BatchV1Api()
+    
+    # 2. Preparamos las opciones de borrado. 
+    # ¡ESTA ES LA CLAVE DEL PDF! La política "Background" le dice a Kubernetes 
+    # que cuando borre el Job, también persiga y borre el Pod asociado (no dejar huérfanos).
+    opciones = client.V1DeleteOptions(propagation_policy="Background")
+    
+    # 3. Le damos la orden a Kubernetes de borrar el Job con ese nombre
+    batch_v1.delete_namespaced_job(
+        name=nombre,                      # El nombre que nos llega como parámetro
+        namespace="estudiantes-202630",   # Nuestro espacio de trabajo
+        body=opciones                     # Le pasamos la regla de borrado en cascada
+    )
 
 
 # ---------------------------------------------------------------------------
