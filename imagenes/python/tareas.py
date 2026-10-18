@@ -6,7 +6,6 @@ Contrato, identico en las tres imagenes:
   salida   : logs libres en stdout; la ULTIMA linea es un JSON de una linea
   exit code: 0 = exito, != 0 = fallo (deja el Job en Failed)
 """
-from kubernetes.client.models import v1_azure_file_persistent_volume_source
 import json
 import os
 import platform
