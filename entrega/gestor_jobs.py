@@ -303,13 +303,28 @@ def listar_jobs():
 
     Esta es la lista que muestra la opcion 2 del menu.
     """
-    # TODO: pedir todos los Jobs del namespace con
-    #   cliente_batch().list_namespaced_job(namespace=NAMESPACE)
-    # El resultado tiene un atributo `.items`; de cada elemento se usan
-    # `job.metadata.name` y `job.status`.
-    jobs = ...
+    jobs = cliente_batch().list_namespaced_job(namespace=NAMESPACE)
 
-    return [(job.metadata.name, describir_estado(job.status)) for job in jobs.items]
+    resultado = []
+    for job in jobs.items:
+        nombre = job.metadata.name
+        estado = describir_estado(job.status)
+
+        # El Job solo sabe que fallo o que sigue activo; la causa esta en el
+        # Pod. Un Pod sin imagen cuenta como activo, por eso se revisa tambien
+        # cuando el Job esta en ejecucion.
+        if estado == "fallo":
+            causa = causa_en_pod(nombre)
+            if causa == "fallo: sin memoria (OOMKilled)":
+                estado = causa
+        elif estado == "en ejecucion":
+            causa = causa_en_pod(nombre)
+            if causa == "atascado: imagen no encontrada":
+                estado = causa
+
+        resultado.append((nombre, estado))
+
+    return resultado
 
 
 def consultar_estado(nombre):
