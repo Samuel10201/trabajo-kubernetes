@@ -252,12 +252,24 @@ def describir_estado(status):
     correctos = status.succeeded or 0
     fallidos = status.failed or 0
 
-    # TODO: devolver un texto que distinga los cuatro casos:
-    #   - `activos` > 0    -> el Job sigue en ejecucion;
-    #   - `correctos` > 0  -> el Job termino correctamente;
-    #   - `fallidos` > 0   -> el Job fallo;
-    #   - los tres en cero -> el Pod todavia no ha arrancado.
-    raise NotImplementedError("describir_estado")
+    # El plazo se revisa primero: cuando se vence, el Job queda como fallido
+    # y la causa solo aparece en sus condiciones (tipo Failed, motivo
+    # DeadlineExceeded).
+    for condicion in status.conditions or []:
+        if (
+            condicion.type == "Failed"
+            and condicion.status == "True"
+            and condicion.reason == "DeadlineExceeded"
+        ):
+            return "fallo: tiempo agotado (DeadlineExceeded)"
+
+    if activos > 0:
+        return "en ejecucion"
+    if correctos > 0:
+        return "termino correctamente"
+    if fallidos > 0:
+        return "fallo"
+    return "pendiente (el Pod todavia no ha arrancado)"
 
 
 def listar_jobs():
