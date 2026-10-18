@@ -1,9 +1,10 @@
 """Gestor de Jobs de Kubernetes para la practica 202630.
 
-ESQUELETO: el andamiaje del menu y del cliente de Kubernetes ya esta puesto.
-Lo que falta esta marcado con TODO y con `...` en los campos a completar. El
-foco de la practica es Kubernetes, no Python: no tienes que inventar la
-estructura del programa, sino entender que significa cada campo del Job.
+Lanza tareas de las imagenes del proyecto como Jobs de Kubernetes, sin editar
+YAML: el usuario elige lenguaje, tarea y complejidad, y el programa arma el Job
+con el cliente oficial de Python, lo envia al namespace del proyecto y despues
+permite ver su estado (con la causa si fallo), sus logs y limpiar los
+terminados.
 
 El programa es un menu interactivo:
 
@@ -264,11 +265,13 @@ def describir_estado(status):
     fallidos = status.failed or 0
 
     # El plazo se revisa primero: cuando se vence, el Job queda como fallido
-    # y la causa solo aparece en sus condiciones (tipo Failed, motivo
-    # DeadlineExceeded).
+    # y la causa solo aparece en sus condiciones (motivo DeadlineExceeded).
+    # Kubernetes pone primero FailureTarget y recien cuando el Pod termina de
+    # apagarse (hasta 30 s) agrega Failed; se aceptan las dos para no mostrar
+    # un "fallo" generico durante ese rato.
     for condicion in status.conditions or []:
         if (
-            condicion.type == "Failed"
+            condicion.type in ("Failed", "FailureTarget")
             and condicion.status == "True"
             and condicion.reason == "DeadlineExceeded"
         ):
