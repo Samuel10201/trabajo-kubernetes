@@ -272,6 +272,32 @@ def describir_estado(status):
     return "pendiente (el Pod todavia no ha arrancado)"
 
 
+def causa_en_pod(nombre):
+    """Devuelve la causa del problema leida en el Pod del Job, o "".
+
+    El Job solo sabe que fallo o que sigue activo. Por que murio el contenedor
+    (sin memoria) o por que no arranca (no hay imagen) lo sabe el Pod.
+    """
+    config.load_kube_config()
+    core = client.CoreV1Api()
+
+    pods = core.list_namespaced_pod(
+        namespace=NAMESPACE,
+        label_selector=f"job-name={nombre}",
+    )
+    for pod in pods.items:
+        for contenedor in pod.status.container_statuses or []:
+            terminado = contenedor.state.terminated
+            if terminado and terminado.reason == "OOMKilled":
+                return "fallo: sin memoria (OOMKilled)"
+
+            esperando = contenedor.state.waiting
+            if esperando and esperando.reason == "ErrImageNeverPull":
+                return "atascado: imagen no encontrada"
+
+    return ""
+
+
 def listar_jobs():
     """Devuelve [(nombre, estado)] de todos los Jobs del namespace.
 
