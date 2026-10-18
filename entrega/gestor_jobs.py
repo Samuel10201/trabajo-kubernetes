@@ -302,16 +302,12 @@ def consultar_logs(nombre):
 
     pod = pods.items[0].metadata.name
 
-    # TODO: devolver la salida del Pod. Pidan la respuesta sin procesar y
-    # decodifiquenla:
-    #
-    #   respuesta = core.read_namespaced_pod_log(
-    #       name=pod, namespace=NAMESPACE, _preload_content=False)
-    #   return respuesta.data.decode("utf-8", errors="replace")
-    #
-    # Sin `_preload_content=False`, el cliente 36.x devuelve el repr de los
-    # bytes y los logs se imprimen como b'...\n...' en una sola linea.
-    raise NotImplementedError("consultar_logs")
+    # Los logs se piden al Pod. Sin _preload_content=False el cliente devuelve
+    # el repr de los bytes y todo sale como b'...' en una sola linea.
+    respuesta = core.read_namespaced_pod_log(
+        name=pod, namespace=NAMESPACE, _preload_content=False
+    )
+    return respuesta.data.decode("utf-8", errors="replace")
 
 
 # ---------------------------------------------------------------------------
