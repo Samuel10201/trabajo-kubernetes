@@ -10,7 +10,7 @@ El proyecto parte del repositorio del profesor
 las imágenes, el catálogo, el namespace y el script de preparación vienen de ahí, y el grupo
 completó el gestor y añadió una tarea nueva en Python, `primos`.
 
-**Video de demostración:** _(pendiente: se agrega aquí cuando esté grabado)_
+**Video de demostración:** [https://youtu.be/1iDcwKyTJfE](https://youtu.be/1iDcwKyTJfE)
 
 ## Contenido
 
